@@ -1,207 +1,146 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>  
+#include <time.h>
 
-#define MAX_HITS 3  
+#define MAX_BULLETS 6
+#define WIN_CONDITION 4
 
-int gun[8] = {0};           
-int chambers = 5;           
-int bullet_count = 2;       
-int current_position = 0;   
-int player_hits = 0;        
-int dealer_hits = 0;        
-int round_number = 1;       
-int bullets_fired = 0;      
+typedef struct {
+    int bullets[MAX_BULLETS];
+    int bulletIndex;
+    int playerScore;
+    int aiScore;
+} Game;
 
-void initialize_game();
-void reset_gun();
-int fire_gun();
-int player_turn();
-int dealer_turn(int player_previous_choice);
-void slow_print_line(const char* message);
+void loadBullets(Game *game, int realBullets) {
+    int blanks = MAX_BULLETS - realBullets;
+    printf("Game Start! Loaded with %d live rounds and %d blanks.\n", realBullets, blanks);
 
-void reset_gun() {
-
-    if (round_number == 1) {
-        chambers = 5;
-        bullet_count = 2;
-    } else if (round_number == 2) {
-        chambers = 7;
-        bullet_count = 3;
-    } else if (round_number == 3) {
-        chambers = 8;
-        bullet_count = 4;
+    int i;
+    for (i = 0; i < MAX_BULLETS; i++) {
+        game->bullets[i] = i < realBullets ? 1 : 0;
     }
-
-    for (int i = 0; i < chambers; i++) {
-        gun[i] = 0;  
+    for (i = MAX_BULLETS - 1; i > 0; i--) {
+        int j = rand() % (i + 1);
+        int temp = game->bullets[i];
+        game->bullets[i] = game->bullets[j];
+        game->bullets[j] = temp;
     }
-
-    for (int i = 0; i < bullet_count; i++) {
-        int pos;
-        do {
-            pos = rand() % chambers;
-        } while (gun[pos] == 1); 
-        gun[pos] = 1;
-    }
-
-    current_position = 0;  
-    bullets_fired = 0;     
-    printf("\n라운드 %d: %d발 중 %d발이 실탄입니다.\n", round_number, chambers, bullet_count);
+    game->bulletIndex = 0;
 }
 
-int fire_gun() {
-    int result = gun[current_position];  
-    current_position = (current_position + 1) % chambers;  
-    bullets_fired++;  
-    return result;
+int shoot(Game *game) {
+    if (game->bulletIndex >= MAX_BULLETS) return -1;
+    return game->bullets[game->bulletIndex++];
 }
 
-void slow_print_line(const char* message) {
-    printf("%s\n", message);
-    sleep(1);  
+int aiDecision(Game *game) {
+    int remainingBullets = MAX_BULLETS - game->bulletIndex;
+    int remainingRealBullets = 0;
+
+    for (int i = game->bulletIndex; i < MAX_BULLETS; i++) {
+        if (game->bullets[i] == 1) remainingRealBullets++;
+    }
+
+    if (remainingRealBullets > remainingBullets / 2) return 0;
+    else return 1;
 }
 
-int player_turn() {
-    int choice;
-    int game_over = 0;
+void gameLoop() {
+    Game game;
+    srand(time(NULL));
 
-    do {
-        printf("당신의 턴입니다. 자신에게 쏘려면 1, 딜러에게 쏘려면 2를 입력하세요: ");
-        scanf("%d", &choice);
+    while (1) {
+        game.playerScore = 0;
+        game.aiScore = 0;
 
-        if (choice == 1) {
-            slow_print_line("당신은 자신에게 총을 쐈습니다...");
-            if (fire_gun()) {
-                slow_print_line("총알이 발사되었습니다! 당신이 총을 맞았습니다.");
-                player_hits++;
-                if (player_hits == MAX_HITS) {
-                    slow_print_line("당신은 세 번 맞아 죽었습니다.");
-                    return 1; 
-                } else {
-                    printf("당신은 %d번 맞았습니다. 아직 살아있습니다.\n", player_hits);
+        int liveRounds = 3;
+        loadBullets(&game, liveRounds);
+
+        printf("=== Game Start ===\n");
+
+        while (game.playerScore < WIN_CONDITION && game.aiScore < WIN_CONDITION) {
+            int playerChoice;
+
+            while (1) {
+                printf("Your choice (0: Shoot opponent, 1: Shoot self): ");
+                scanf("%d", &playerChoice);
+
+                int result = shoot(&game);
+                if (result == -1) {
+                    printf("All bullets used. Reloading.\n");
+                    loadBullets(&game, liveRounds);
+                    continue;
                 }
-            } else {
-                slow_print_line("총알이 발사되지 않았습니다. 다시 시도할 수 있습니다.");
-                game_over = 0;  
+
+                if (playerChoice == 0) {
+                    if (result == 1) {
+                        game.playerScore++;
+                        printf("Player: Live round! Current score - Player: %d, AI: %d\n", game.playerScore, game.aiScore);
+                    } else {
+                        printf("Player: Blank! No effect.\n");
+                    }
+                    break;
+                } else {
+                    if (result == 1) {
+                        printf("Player: Self-hit with live round! Current score - Player: %d, AI: %d\n", game.playerScore, game.aiScore);
+                    } else {
+                        printf("Player: Blank! Extra turn!\n");
+                        continue;
+                    }
+                    break;
+                }
             }
-        } else {
-            slow_print_line("당신은 딜러에게 총을 쐈습니다...");
-            if (fire_gun()) {
-                slow_print_line("총알이 발사되었습니다! 딜러가 총을 맞았습니다.");
-                dealer_hits++;
-                if (dealer_hits == MAX_HITS) {
-                    slow_print_line("딜러는 세 번 맞아 죽었습니다.");
-                    return 1; 
-                } else {
-                    printf("딜러는 %d번 맞았습니다. 아직 살아있습니다.\n", dealer_hits);
-                }
-            } else {
-                slow_print_line("총알이 발사되지 않았습니다.");
-                game_over = 0;  
+
+            if (game.playerScore >= WIN_CONDITION) {
+                printf("Player wins!\n");
+                break;
             }
-        }
 
-        if (bullets_fired >= chambers) {
-            slow_print_line("총알이 모두 소진되었습니다. 다음 라운드로 넘어갑니다.");
-            return 1;  
-        }
+            while (1) {
+                int aiChoice = aiDecision(&game);
+                printf("AI’s choice: %s\n", aiChoice == 0 ? "Shoot opponent" : "Shoot self");
 
-    } while (choice == 1 && game_over == 0);  
-
-    return 0;
-}
-
-int dealer_turn(int player_previous_choice) {
-    int choice;
-    int game_over = 0;
-
-    int remaining_bullets = 0;
-    for (int i = 0; i < chambers; i++) {
-        if (gun[i] == 1) remaining_bullets++;
-    }
-
-    double fire_probability = (double)remaining_bullets / (chambers - current_position);
-
-    if (fire_probability > 0.5) {
-
-        choice = 2;  
-    } else {
-
-        choice = 1;  
-    }
-
-    do {
-        if (choice == 1) {
-            slow_print_line("딜러는 자신에게 총을 쐈습니다...\n");
-            if (fire_gun()) {
-                slow_print_line("총알이 발사되었습니다! 딜러가 총을 맞았습니다.");
-                dealer_hits++;
-                if (dealer_hits == MAX_HITS) {
-                    slow_print_line("딜러는 세 번 맞아 죽었습니다.");
-                    return 1; 
-                } else {
-                    printf("딜러는 %d번 맞았습니다. 아직 살아있습니다.\n", dealer_hits);
+                int result = shoot(&game);
+                if (result == -1) {
+                    printf("All bullets used. Reloading.\n");
+                    loadBullets(&game, liveRounds);
+                    continue;
                 }
-            } else {
-                slow_print_line("총알이 발사되지 않았습니다. 딜러가 다시 시도할 수 있습니다.");
-                game_over = 0;  
+
+                if (aiChoice == 0) {
+                    if (result == 1) {
+                        game.aiScore++;
+                        printf("AI: Live round! Current score - Player: %d, AI: %d\n", game.playerScore, game.aiScore);
+                    } else {
+                        printf("AI: Blank! No effect.\n");
+                    }
+                    break;
+                } else {
+                    if (result == 1) {
+                        printf("AI: Self-hit with live round! Current score - Player: %d, AI: %d\n", game.playerScore, game.aiScore);
+                    } else {
+                        printf("AI: Blank! Extra turn!\n");
+                        continue;
+                    }
+                    break;
+                }
             }
-        } else {
-            slow_print_line("딜러는 당신에게 총을 쐈습니다...\n");
-            if (fire_gun()) {
-                slow_print_line("총알이 발사되었습니다! 당신이 총을 맞았습니다.");
-                player_hits++;
-                if (player_hits == MAX_HITS) {
-                    slow_print_line("당신은 세 번 맞아 죽었습니다.");
-                    return 1; 
-                } else {
-                    printf("당신은 %d번 맞았습니다. 아직 살아있습니다.\n", player_hits);
-                }
-            } else {
-                slow_print_line("총알이 발사되지 않았습니다.");
-                game_over = 0;  
+
+            if (game.aiScore >= WIN_CONDITION) {
+                printf("AI wins!\n");
+                break;
             }
         }
 
-        if (bullets_fired >= chambers) {
-            slow_print_line("총알이 모두 소진되었습니다. 다음 라운드로 넘어갑니다.");
-            return 1;  
-        }
-
-        if (game_over == 0 && choice == 1) {
-
-            choice = 1;
-        }
-
-    } while (choice == 1 && game_over == 0);  
-
-    return 0;
+        printf("Play again? (1: Yes, 0: No): ");
+        int restart;
+        scanf("%d", &restart);
+        if (!restart) break;
+    }
 }
 
 int main() {
-    srand(time(NULL));  
-
-    while (round_number <= 3) {  
-        reset_gun();
-
-        int game_over = 0;
-
-        while (!game_over) {
-            game_over = player_turn();
-            if (game_over) break;
-
-            game_over = dealer_turn(0);
-            if (game_over) break;
-        }
-
-        if (round_number < 3) {
-            slow_print_line("다음 라운드로 넘어갑니다...");
-            round_number++;
-        } else {
-            slow_print_line("게임이 종료되었습니다.");
-        }
-    }
-
+    gameLoop();
     return 0;
 }
